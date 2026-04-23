@@ -42,7 +42,7 @@ class DepthConverter(Node):
         # -------------------------------
         # ROS interfaces
         # -------------------------------
-        self.depth_pub = self.create_publisher(Odometry, 'depth_data', 10)
+        self.depth_pub = self.create_publisher(Odometry, 'depth/odom', 10)
 
         self.pressure_sub = self.create_subscription(
             FluidPressure, 'pressure/data', self.pressure_callback, qos_profile_sensor_data
