@@ -8,3 +8,8 @@ depth_converter:
     calibration_timeout_s: 10.0
     calibration_max_variance: 100.0
     calibration_max_offset: 40000.0
+    calibrate_on_startup: true
+    # Optional: path to this param file.  When set, a successful calibration
+    # writes the updated fluid_pressure_atm value back here so the value
+    # persists across restarts.  Leave empty (or omit) to disable.
+    param_file_path: ""

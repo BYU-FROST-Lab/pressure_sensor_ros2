@@ -2,6 +2,9 @@
 
 # TODO gunna run into a problem if the node needs to be restarted while in the water
 
+import os
+import tempfile
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
@@ -12,6 +15,7 @@ from nav_msgs.msg import Odometry
 from std_srvs.srv import Trigger
 
 import numpy as np
+import yaml
 
 GRAVITY = 9.81  # m/s^2
 
@@ -35,6 +39,10 @@ class DepthConverter(Node):
         self.declare_parameter('default_depth_variance', 1.0)   # m^2
         self.declare_parameter('use_calibration_variance', True)
         self.declare_parameter('calibrate_on_startup', True)
+        # Path to a YAML param file.  When non-empty, a successful calibration
+        # writes the updated fluid_pressure_atm value back to that file so the
+        # calibrated offset survives a node restart.
+        self.declare_parameter('param_file_path', '')
 
         self.average_pressure = self.get_parameter('fluid_pressure_atm').value
         self.depth_variance = self.get_parameter('default_depth_variance').value
@@ -172,7 +180,66 @@ class DepthConverter(Node):
             f'Calibration complete using {len(self.pressure_samples)} samples | '
             f'offset={mean_pressure - old_pressure:.2f} Pa | variance={variance:.2f} Pa^2'
         )
-      
+
+        self.save_calibration_to_file(mean_pressure)
+
+    def save_calibration_to_file(self, pressure: float):
+        """Write the calibrated fluid_pressure_atm value back to the param file.
+
+        Does nothing when the ``param_file_path`` parameter is empty or the
+        target file does not exist.
+
+        Note: the file is re-written using PyYAML, which does not preserve
+        comments or original key ordering.
+        """
+        param_file = self.get_parameter('param_file_path').value
+        if not param_file:
+            return
+
+        param_file = os.path.expanduser(param_file)
+        if not os.path.isfile(param_file):
+            self.get_logger().warning(
+                f'param_file_path "{param_file}" does not exist; '
+                'calibration value will not be saved'
+            )
+            return
+
+        try:
+            with open(param_file, 'r') as f:
+                data = yaml.safe_load(f) or {}
+
+            node_name = self.get_name()
+            # Support both bare and namespaced param file layouts
+            if node_name in data and 'ros__parameters' in data[node_name]:
+                data[node_name]['ros__parameters']['fluid_pressure_atm'] = pressure
+            elif '/**' in data and 'ros__parameters' in data['/**']:
+                data['/**']['ros__parameters']['fluid_pressure_atm'] = pressure
+            else:
+                # Fall back: write under the node-name key
+                data.setdefault(node_name, {}).setdefault(
+                    'ros__parameters', {}
+                )['fluid_pressure_atm'] = pressure
+
+            # Write atomically: dump to a sibling temp file, then rename so
+            # that a crash mid-write never leaves a partially-written file.
+            dir_name = os.path.dirname(param_file) or '.'
+            fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.yaml.tmp')
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    yaml.dump(data, f, default_flow_style=False)
+                os.replace(tmp_path, param_file)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+
+            self.get_logger().info(
+                f'Saved calibrated fluid_pressure_atm={pressure:.2f} Pa to "{param_file}"'
+            )
+        except Exception as e:
+            self.get_logger().error(f'Failed to save calibration to file: {e}')
 
 
 def main():
