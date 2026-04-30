@@ -16,7 +16,7 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*launch.py'))),
 
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'ruamel.yaml'],
     zip_safe=True,
     maintainer='frostlab',
     maintainer_email='frostlab@todo.todo',

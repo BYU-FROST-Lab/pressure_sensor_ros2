@@ -15,7 +15,7 @@ from nav_msgs.msg import Odometry
 from std_srvs.srv import Trigger
 
 import numpy as np
-import yaml
+from ruamel.yaml import YAML
 
 GRAVITY = 9.81  # m/s^2
 
@@ -189,8 +189,7 @@ class DepthConverter(Node):
         Does nothing when the ``param_file_path`` parameter is empty or the
         target file does not exist.
 
-        Note: the file is re-written using PyYAML, which does not preserve
-        comments or original key ordering.
+        Uses ruamel.yaml to preserve comments and key ordering in the file.
         """
         param_file = self.get_parameter('param_file_path').value
         if not param_file:
@@ -205,8 +204,11 @@ class DepthConverter(Node):
             return
 
         try:
+            ryaml = YAML()
+            ryaml.preserve_quotes = True
+
             with open(param_file, 'r') as f:
-                data = yaml.safe_load(f) or {}
+                data = ryaml.load(f) or {}
 
             node_name = self.get_name()
             # Support both bare and namespaced param file layouts
@@ -226,7 +228,7 @@ class DepthConverter(Node):
             fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.yaml.tmp')
             try:
                 with os.fdopen(fd, 'w') as f:
-                    yaml.dump(data, f, default_flow_style=False)
+                    ryaml.dump(data, f)
                 os.replace(tmp_path, param_file)
             except Exception:
                 try:
